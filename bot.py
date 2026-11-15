@@ -14,7 +14,7 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
 ai_client = genai.Client(api_key=GEMINI_API_KEY)
 
-# --- Flask Server สำหรับรันบน Render (ป้องการปิดกั้นพอร์ต) ---
+# --- Flask Server สำหรับรันบน Render (ป้องกันการปิดกั้นพอร์ต) ---
 app = Flask(__name__)
 
 @app.route('/')
@@ -175,7 +175,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     try:
         response = ai_client.models.generate_content(
-            model="gemini-2.5-flash",
+            model="gemini-3.8-flash",
             contents=text_prompt,
         )
         
@@ -210,7 +210,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         os.remove(image_path)
 
 def main():
-    # เพิ่ม Timeout ป้องกันอาการหลุดการเชื่อมต่อบน Render
     app_bot = (
         ApplicationBuilder()
         .token(TELEGRAM_TOKEN)
