@@ -222,8 +222,10 @@ def main():
     app.add_handler(CommandHandler("start", start_cmd))
     app.add_handler(CommandHandler("set", set_user_cmd))
     app.add_handler(CommandHandler("summary", summary_cmd))
-    app.add_handler(filters.TEXT & (~filters.COMMAND), handle_message)
-    app.add_handler(filters.PHOTO, handle_message)
+    
+    # ตรงนี้ที่ต้องแก้ให้ครอบด้วย MessageHandler ครับ
+    app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), handle_message))
+    app.add_handler(MessageHandler(filters.PHOTO, handle_message))
 
     print("🤖 Smart Diet Bot พร้อมทำงานแล้ว...")
     app.run_polling()
