@@ -1,3 +1,18 @@
+from flask import Flask
+import threading
+
+app = Flask(__name__)
+
+@app.route('/')
+def home():
+    text = "Bot is running!"
+    return text
+
+def run_web():
+    app.run(host="0.0.0.0", port=10000)
+
+# เปิดเว็บเซิร์ฟเวอร์แยกอีก Thread หนึ่ง
+threading.Thread(target=run_web).start()
 import os
 import sqlite3
 from datetime import datetime
