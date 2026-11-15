@@ -1,18 +1,5 @@
 from flask import Flask
 import threading
-
-app = Flask(__name__)
-
-@app.route('/')
-def home():
-    text = "Bot is running!"
-    return text
-
-def run_web():
-    app.run(host="0.0.0.0", port=10000)
-
-# เปิดเว็บเซิร์ฟเวอร์แยกอีก Thread หนึ่ง
-threading.Thread(target=run_web).start()
 import os
 import sqlite3
 from datetime import datetime
@@ -27,11 +14,24 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
 ai_client = genai.Client(api_key=GEMINI_API_KEY)
 
+# --- Flask Server สำหรับรันบน Render (ป้องการปิดกั้นพอร์ต) ---
+app = Flask(__name__)
+
+@app.route('/')
+def home():
+    return "Smart Diet Bot is running!", 200
+
+def run_web():
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host="0.0.0.0", port=port)
+
+# เปิดเว็บเซิร์ฟเวอร์แยกอีก Thread หนึ่งทันที
+threading.Thread(target=run_web, daemon=True).start()
+
 # --- จัดการฐานข้อมูล SQLite ---
 def init_db():
     conn = sqlite3.connect("diet_bot.db")
     cursor = conn.cursor()
-    # ตารางข้อมูลส่วนตัวผู้ใช้
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS users (
             user_id INTEGER PRIMARY KEY,
@@ -40,12 +40,11 @@ def init_db():
             target_calories INTEGER
         )
     """)
-    # ตารางบันทึกอาหารและการออกกำลังกาย
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS logs (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id INTEGER,
-            log_type TEXT, -- 'food' หรือ 'exercise'
+            log_type TEXT,
             description TEXT,
             calories INTEGER,
             date TEXT
@@ -70,21 +69,21 @@ async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "สวัสดีครับ! ยินดีต้อนรับสู่บอทคุมน้ำหนัก 🥗\n"
             "ก่อนเริ่มใช้งาน รบกวนตั้งค่าเป้าหมายของคุณก่อนครับ โดยพิมพ์:\n"
             "`/set น้ำหนัก ส่วนสูง แคลอรี่ที่ควรได้รับต่อวัน`\n"
-            "เช่น: `/set 65 170 2000`"
+            "เช่น: `/set 65 170 2000`",
+            parse_mode="Markdown"
         )
     else:
         await update.message.reply_text(
             "ยินดีต้อนรับกลับครับ! ส่งรูปอาหาร หรือพิมพ์รายการอาหาร/การออกกำลังกายมาได้เลย\n"
             "คำสั่งอื่นๆ:\n"
-            "/summary - ดูสรุปแคลอรี่วันนี้\n"
-            "/reset - เริ่มต้นใหม่"
+            "/summary - ดูสรุปแคลอรี่วันนี้"
         )
 
 async def set_user_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     args = context.args
     if len(args) < 3:
-        await update.message.reply_text("พิมพ์ข้อมูลไม่ครบครับ ใช้รูปแบบ: `/set 65 170 2000` (น้ำหนัก ส่วนสูง เป้าหมายแคลอรี่)")
+        await update.message.reply_text("พิมพ์ข้อมูลไม่ครบครับ ใช้รูปแบบ: `/set 65 170 2000` (น้ำหนัก ส่วนสูง เป้าหมายแคลอรี่)", parse_mode="Markdown")
         return
     
     try:
@@ -111,16 +110,13 @@ async def summary_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     conn = sqlite3.connect("diet_bot.db")
     cursor = conn.cursor()
     
-    # ดึงเป้าหมายผู้ใช้
     cursor.execute("SELECT target_calories FROM users WHERE user_id = ?", (user_id,))
     user_row = cursor.fetchone()
-    target_cal = user_row[0] if user_row else 2000 # ค่าเริ่มต้นถ้ายังไม่ตั้ง
+    target_cal = user_row[0] if user_row else 2000 
     
-    # ดึงรายการอาหารวันนี้
     cursor.execute("SELECT description, calories FROM logs WHERE user_id = ? AND log_type = 'food' AND date = ?", (user_id, today))
     foods = cursor.fetchall()
     
-    # ดึงรายการออกกำลังกายวันนี้
     cursor.execute("SELECT description, calories FROM logs WHERE user_id = ? AND log_type = 'exercise' AND date = ?", (user_id, today))
     exercises = cursor.fetchall()
     conn.close()
@@ -179,15 +175,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     try:
         response = ai_client.models.generate_content(
-            model="gemini-3.8-flash",
+            model="gemini-2.5-flash",
             contents=text_prompt,
         )
         
-        # แปลงผลลัพธ์จาก AI ให้เป็นข้อมูลเก็บลงฐานข้อมูล
         import json
         import re
         
-        # ดึงข้อความ JSON ออกมาจากคำตอบของ AI
         res_text = response.text
         match = re.search(r'\{.*\}', res_text, re.DOTALL)
         if match:
@@ -196,7 +190,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             name = data.get("name", "ไม่ระบุ")
             cals = int(data.get("calories", 0))
             
-            # บันทึกลง DB
             conn = sqlite3.connect("diet_bot.db")
             cursor = conn.cursor()
             cursor.execute("INSERT INTO logs (user_id, log_type, description, calories, date) VALUES (?, ?, ?, ?, ?)",
@@ -217,18 +210,17 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         os.remove(image_path)
 
 def main():
-    app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
+    app_bot = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
     
-    app.add_handler(CommandHandler("start", start_cmd))
-    app.add_handler(CommandHandler("set", set_user_cmd))
-    app.add_handler(CommandHandler("summary", summary_cmd))
+    app_bot.add_handler(CommandHandler("start", start_cmd))
+    app_bot.add_handler(CommandHandler("set", set_user_cmd))
+    app_bot.add_handler(CommandHandler("summary", summary_cmd))
     
-    # ตรงนี้ที่ต้องแก้ให้ครอบด้วย MessageHandler ครับ
-    app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), handle_message))
-    app.add_handler(MessageHandler(filters.PHOTO, handle_message))
+    app_bot.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), handle_message))
+    app_bot.add_handler(MessageHandler(filters.PHOTO, handle_message))
 
     print("🤖 Smart Diet Bot พร้อมทำงานแล้ว...")
-    app.run_polling()
+    app_bot.run_polling()
 
 if __name__ == "__main__":
     main()
