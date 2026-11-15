@@ -210,7 +210,15 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         os.remove(image_path)
 
 def main():
-    app_bot = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
+    # เพิ่ม Timeout ป้องกันอาการหลุดการเชื่อมต่อบน Render
+    app_bot = (
+        ApplicationBuilder()
+        .token(TELEGRAM_TOKEN)
+        .read_timeout(30)
+        .write_timeout(30)
+        .connect_timeout(30)
+        .build()
+    )
     
     app_bot.add_handler(CommandHandler("start", start_cmd))
     app_bot.add_handler(CommandHandler("set", set_user_cmd))
